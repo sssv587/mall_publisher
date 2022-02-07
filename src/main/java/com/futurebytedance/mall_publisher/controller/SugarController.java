@@ -1,7 +1,11 @@
 package com.futurebytedance.mall_publisher.controller;
 
 import com.futurebytedance.mall_publisher.bean.ProductStats;
+import com.futurebytedance.mall_publisher.bean.ProvinceStats;
+import com.futurebytedance.mall_publisher.bean.VisitorStats;
 import com.futurebytedance.mall_publisher.service.ProductStatsService;
+import com.futurebytedance.mall_publisher.service.ProvinceStatsService;
+import com.futurebytedance.mall_publisher.service.VisitorStatsService;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateFormatUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +31,175 @@ public class SugarController {
     //将service注入进来
     @Autowired
     ProductStatsService productStatsService;
+
+    @Autowired
+    ProvinceStatsService provinceStatsService;
+
+    @Autowired
+    VisitorStatsService visitorStatsService;
+
+    @RequestMapping("/hr")
+    public String getVisitorStatsByHour(@RequestParam(value = "date", defaultValue = "0") Integer date) {
+        if (date == 0) {
+            date = now();
+        }
+        //从service层中获取分时访问数据
+        List<VisitorStats> visitorStatsByHrList = visitorStatsService.getVisitorStatsByHour(date);
+
+        //因为有的小时可能没有数据，为了把每个小时都展示出来，我们创建一个数组，用来保存每个小时对应的访问情况
+        VisitorStats[] visitorStatsArr = new VisitorStats[24];
+        for (VisitorStats visitorStats : visitorStatsByHrList) {
+            visitorStatsArr[visitorStats.getHr()] = visitorStats;
+        }
+
+        //定义存放小时、uv、pv、新用户的List集合
+        List<String> hrList = new ArrayList<>();
+        List<Long> uvList = new ArrayList<>();
+        List<Long> pvList = new ArrayList<>();
+        List<Long> newVisitorList = new ArrayList<>();
+
+        //对数组进行遍历，将0~23点的数据查询出来，分别放到对应的List集合中保存起来
+        for (int i = 0; i <= 23; i++) {
+            VisitorStats visitorStats = visitorStatsArr[i];
+            if (visitorStats != null) {
+                uvList.add(visitorStats.getUv_ct());
+                pvList.add(visitorStats.getPv_ct());
+                newVisitorList.add(visitorStats.getNew_uv());
+            } else {
+                uvList.add(0L);
+                pvList.add(0L);
+                newVisitorList.add(0L);
+            }
+            //小时位不足2位的时候，前面补0
+            hrList.add(String.format("%02d", i));
+        }
+        //拼接字符串
+        return "{\"status\":0,\"data\":{" + "\"categories\":" +
+                "[\"" + StringUtils.join(hrList, "\",\"") + "\"],\"series\":[" +
+                "{\"name\":\"uv\",\"data\":[" + StringUtils.join(uvList, ",") + "]}," +
+                "{\"name\":\"pv\",\"data\":[" + StringUtils.join(pvList, ",") + "]}," +
+                "{\"name\":\"新用户\",\"data\":[" + StringUtils.join(newVisitorList, ",") + "]}]}}";
+    }
+
+    @RequestMapping("visitor")
+    public Map getVisitorStatsByNewFlag(
+            @RequestParam(value = "date", defaultValue = "0") Integer date) {
+        if (date == 0) {
+            date = now();
+        }
+        //调用service层，获取访客统计相关指标数据
+        List<VisitorStats> visitorStatsByNewFlagList = visitorStatsService.getVisitorStatsByNewFlag(date);
+
+        //定义两个对象，分别接收新老访客统计的结果
+        VisitorStats newVisitorStats = new VisitorStats();
+        VisitorStats oldVisitorStats = new VisitorStats();
+
+        //对查询的数据进行遍历，给新老访客统计对象赋值
+        for (VisitorStats visitorStats : visitorStatsByNewFlagList) {
+            if ("1".equals(visitorStats.getIs_new())) {
+                newVisitorStats = visitorStats;
+            } else {
+                oldVisitorStats = visitorStats;
+            }
+        }
+
+        //返回的json字符串的处理
+        Map resMap = new HashMap();
+        resMap.put("status", 0);
+        Map dataMap = new HashMap();
+        dataMap.put("combineNum", 1);
+
+        //表头
+        List columnList = new ArrayList();
+        Map typeHeader = new HashMap();
+        typeHeader.put("name", "类别");
+        typeHeader.put("id", "type");
+        columnList.add(typeHeader);
+
+        Map newHeader = new HashMap();
+        newHeader.put("name", "新用户");
+        newHeader.put("id", "new");
+        columnList.add(newHeader);
+
+        Map oldHeader = new HashMap();
+        oldHeader.put("name", "老用户");
+        oldHeader.put("id", "old");
+        columnList.add(oldHeader);
+        dataMap.put("columns", columnList);
+
+        //表格bady
+        List rowList = new ArrayList();
+        //用户数
+        Map userCount = new HashMap();
+        userCount.put("type", "用户数(人)");
+        userCount.put("new", newVisitorStats.getUv_ct());
+        userCount.put("old", oldVisitorStats.getUv_ct());
+        rowList.add(userCount);
+
+        //总访问页面
+        Map pageTotal = new HashMap();
+        pageTotal.put("type", "总访问页面(次)");
+        pageTotal.put("new", newVisitorStats.getPv_ct());
+        pageTotal.put("old", oldVisitorStats.getPv_ct());
+        rowList.add(pageTotal);
+
+        //跳出率
+        Map jumRate = new HashMap();
+        jumRate.put("type", "跳出率(%)");
+        jumRate.put("new", newVisitorStats.getUjRate());
+        jumRate.put("old", oldVisitorStats.getUjRate());
+        rowList.add(jumRate);
+
+        //平均在线时长
+        Map ageDurTime = new HashMap();
+        ageDurTime.put("type", "平均在线时长(秒)");
+        ageDurTime.put("new", newVisitorStats.getDurPerSv());
+        ageDurTime.put("old", oldVisitorStats.getDurPerSv());
+        rowList.add(ageDurTime);
+
+        //平均页面访问人数
+        Map ageVisitCount = new HashMap();
+        ageVisitCount.put("type", "平均访问人数(人次)");
+        ageVisitCount.put("new", newVisitorStats.getPvPerSv());
+        ageVisitCount.put("old", oldVisitorStats.getPvPerSv());
+        rowList.add(ageVisitCount);
+
+        dataMap.put("rows", rowList);
+        resMap.put("data", dataMap);
+        return resMap;
+    }
+
+    /**
+     * {
+     * "status": 0,
+     * "data": {
+     * "mapData": [
+     * {
+     * "name": "北京",
+     * "value": 7489
+     * }
+     * ]
+     * }
+     * }
+     */
+    @RequestMapping("/province")
+    public String getProvinceStats(@RequestParam(value = "date", defaultValue = "0") Integer date) {
+        if (date == 0) {
+            date = now();
+        }
+        //从service中获取地区统计数据
+        List<ProvinceStats> provinceStatsList = provinceStatsService.getProvinceStats(date);
+        StringBuilder jsonBuilder = new StringBuilder("{\"status\": 0,\"data\": {\"mapData\": [");
+        for (int i = 0; i < provinceStatsList.size(); i++) {
+            ProvinceStats provinceStats = provinceStatsList.get(i);
+            if (i >= 1) {
+                jsonBuilder.append(",");
+            }
+            jsonBuilder.append("{\"name\": \"").append(provinceStats.getProvince_name()).append("\",\"value\": ").append(provinceStats.getOrder_amount()).append("}");
+        }
+        jsonBuilder.append("]}}");
+        return jsonBuilder.toString();
+    }
 
     /**
      * 请求路径
