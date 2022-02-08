@@ -1,8 +1,10 @@
 package com.futurebytedance.mall_publisher.controller;
 
+import com.futurebytedance.mall_publisher.bean.KeywordStats;
 import com.futurebytedance.mall_publisher.bean.ProductStats;
 import com.futurebytedance.mall_publisher.bean.ProvinceStats;
 import com.futurebytedance.mall_publisher.bean.VisitorStats;
+import com.futurebytedance.mall_publisher.service.KeywordStatsService;
 import com.futurebytedance.mall_publisher.service.ProductStatsService;
 import com.futurebytedance.mall_publisher.service.ProvinceStatsService;
 import com.futurebytedance.mall_publisher.service.VisitorStatsService;
@@ -37,6 +39,31 @@ public class SugarController {
 
     @Autowired
     VisitorStatsService visitorStatsService;
+
+    @Autowired
+    KeywordStatsService keywordStatsService;
+
+    @RequestMapping("/keyword")
+    public String getKeywordStats(@RequestParam(value = "date", defaultValue = "0") Integer date,
+                                  @RequestParam(value = "limit", defaultValue = "20") int limit) {
+        if (date == 0) {
+            date = now();
+        }
+        //查询数据
+        List<KeywordStats> keywordStatsList
+                = keywordStatsService.getKeywordStats(date, limit);
+        StringBuilder jsonSb = new StringBuilder("{\"status\":0,\"msg\":\"\",\"data\":[");
+        //循环拼接字符串
+        for (int i = 0; i < keywordStatsList.size(); i++) {
+            KeywordStats keywordStats = keywordStatsList.get(i);
+            if (i >= 1) {
+                jsonSb.append(",");
+            }
+            jsonSb.append("{\"name\":\"").append(keywordStats.getKeyword()).append("\",").append("\"value\":").append(keywordStats.getCt()).append("}");
+        }
+        jsonSb.append("]}");
+        return jsonSb.toString();
+    }
 
     @RequestMapping("/hr")
     public String getVisitorStatsByHour(@RequestParam(value = "date", defaultValue = "0") Integer date) {
